@@ -1,1 +1,13 @@
 .env
+.env.local
+.env.development
+node_modules/
+*.sqlite
+*.sqlite-journal
+npm-debug.log*
+yarn-debug.log*
+logs/
+*.log
+.DS_Store
+.vscode/
+.idea/
