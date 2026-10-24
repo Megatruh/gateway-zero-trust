@@ -1,3 +1,4 @@
+require("dotenv").config();
 const Database = require("better-sqlite3");
 const path = require("path");
 const { faker } = require("@faker-js/faker");
@@ -6,6 +7,11 @@ const dbPath = path.join(__dirname, "..", "database.sqlite");
 const db = new Database(dbPath);
 
 console.log("[SEED] Inisialsasi Database...");
+
+// Ambil password dari .env, sediakan fallback jika variabel belum diisi
+const ADMIN_PASS = process.env.DEFAULT_ADMIN_PASSWORD;
+const DOSEN_PASS = process.env.DEFAULT_DOSEN_PASSWORD;
+const MHS_PASS = process.env.DEFAULT_MHS_PASSWORD;
 
 // TABEL para_pengguna, nilai, kelas, transkrip
 db.exec(`
@@ -80,7 +86,7 @@ const insertUser = db.prepare(`
 insertUser.run(
     "Mas Admin",
     "admin1",
-    "loremipsum098",
+    SEED_ADMIN_PASSWORD,
     "admin",
     "ADM001",
     "dev-admin-1",
@@ -102,7 +108,7 @@ const para_dosen = [
   },
 ];
 para_dosen.forEach((d) =>
-  insertUser.run(d.nama, d.username, "dosen123", "dosen", d.nip, d.device),
+  insertUser.run(d.nama, d.username, SEED_DOSEN_PASSWORD, "dosen", d.nip, d.device),
 );
 // tambah lagi 5 dosen secara acak pakai faker
 // Tambah Dosen Acak via Faker
@@ -112,7 +118,7 @@ for (let i = 0; i < 5; i++) {
     const username = faker.internet.username().toLowerCase();
     const device = `dev-${faker.string.alphanumeric(8)}`;
     para_dosen.push({ nama, username, nip, device });
-    insertUser.run(nama, username, "dosen123", "dosen", nip, device);
+    insertUser.run(nama, username, SEED_DOSEN_PASSWORD, "dosen", nip, device);
 }
 
 // Data Mahasiswa
@@ -123,7 +129,7 @@ const mahasiswas = [
 ];
 
 mahasiswas.forEach((m) =>
-  insertUser.run(m.nama, m.username, "mahasiswa123", "mahasiswa", m.nim, m.device),
+  insertUser.run(m.nama, m.username, SEED_MHS_PASSWORD, "mahasiswa", m.nim, m.device),
 );
 //Data Mahasiswa Acak via Faker
 for (let i = 0; i < 50; i++) {
@@ -132,7 +138,7 @@ for (let i = 0; i < 50; i++) {
     const username = faker.internet.username().toLowerCase();
     const device = `dev-${faker.string.alphanumeric(8)}`;
     mahasiswas.push({ nama, username, nim, device });
-    insertUser.run(nama, username, "mahasiswa123", "mahasiswa", nim, device);
+    insertUser.run(nama, username, SEED_MHS_PASSWORD, "mahasiswa", nim, device);
 }
 
 // Data Kelas
