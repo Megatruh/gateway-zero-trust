@@ -8,10 +8,10 @@ const db = new Database(dbPath);
 
 console.log("[SEED] Inisialsasi Database...");
 
-// Ambil password dari .env, sediakan fallback jika variabel belum diisi
-const ADMIN_PASS = process.env.DEFAULT_ADMIN_PASSWORD;
-const DOSEN_PASS = process.env.DEFAULT_DOSEN_PASSWORD;
-const MHS_PASS = process.env.DEFAULT_MHS_PASSWORD;
+// Ambil password dari .env
+const SEED_ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD;
+const SEED_DOSEN_PASSWORD = process.env.SEED_DOSEN_PASSWORD;
+const SEED_MHS_PASSWORD = process.env.SEED_MHS_PASSWORD;
 
 // TABEL para_pengguna, nilai, kelas, transkrip
 db.exec(`
