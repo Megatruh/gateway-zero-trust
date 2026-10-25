@@ -1,19 +1,28 @@
-require("dotenv").config();
 const Database = require("better-sqlite3");
-const path = require("path");
+const bcrypt = require("bcryptjs");
 const { faker } = require("@faker-js/faker");
+const path = require("path");
+const config = require("../config/env");
 
 const dbPath = path.join(__dirname, "..", "database.sqlite");
 const db = new Database(dbPath);
 
-console.log("[SEED] Inisialsasi Database...");
+const saltRounds = 10;
 
-// Ambil password dari .env
-const SEED_ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD;
-const SEED_DOSEN_PASSWORD = process.env.SEED_DOSEN_PASSWORD;
-const SEED_MHS_PASSWORD = process.env.SEED_MHS_PASSWORD;
+console.log("[SEED] Inisialisasi Database & Hashing Password...");
 
-// TABEL para_pengguna, nilai, kelas, transkrip
+// Hash default password dari .env
+const hashedAdminPass = bcrypt.hashSync(
+  config.SEED_ADMIN_PASSWORD,
+  saltRounds,
+);
+const hashedDosenPass = bcrypt.hashSync(
+  config.SEED_DOSEN_PASSWORD,
+  saltRounds,
+);
+const hashedMhsPass = bcrypt.hashSync(config.SEED_MHS_PASSWORD, saltRounds);
+
+// TABEL para_pengguna, nilai, kelas, transkrip, audit_logs
 db.exec(`
     CREATE TABLE IF NOT EXISTS para_pengguna (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,16 +49,17 @@ db.exec(`
         is_final INTEGER DEFAULT 0 CHECK(is_final IN(0, 1)),
         FOREIGN KEY (kelas_id) REFERENCES kelas(id),
         FOREIGN KEY (mahasiswa_nim) REFERENCES para_pengguna(nim_or_nip)
-        );
+    );
         
     CREATE TABLE IF NOT EXISTS transkrip (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         mahasiswa_nim TEXT NOT NULL,
         kelas_id INTEGER NOT NULL,
         nilai_angka REAL NOT NULL,
-        FOREIGN KEY (mahasiswa_nim) REFERENCES para_pengguna(nim_or_nip)
+        FOREIGN KEY (mahasiswa_nim) REFERENCES para_pengguna(nim_or_nip),
         FOREIGN KEY (kelas_id) REFERENCES kelas(id)
     );
+
     CREATE TABLE IF NOT EXISTS audit_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -61,7 +71,7 @@ db.exec(`
     );
 `);
 
-// Migrasikan database lama yang belum memiliki kolom nama.
+// Migrasikan database lama yang belum memiliki kolom nama
 const penggunaColumns = db
   .prepare("PRAGMA table_info(para_pengguna)")
   .all()
@@ -81,18 +91,17 @@ const insertUser = db.prepare(`
     VALUES (?, ?, ?, ?, ?, ?)
 `);
 
-// DATA MINIMAL (ADMIN 1; DOSEN 2; MHS 3;)
-// Data admin
+// 1. Data Admin Utama
 insertUser.run(
-    "Mas Admin",
-    "admin1",
-    SEED_ADMIN_PASSWORD,
-    "admin",
-    "ADM001",
-    "dev-admin-1",
+  "Mas Admin",
+  "admin1",
+  hashedAdminPass,
+  "admin",
+  "ADM001",
+  "dev-admin-1",
 );
 
-// data min. 2 dosen
+// 2. Data Dosen Utama
 const para_dosen = [
   {
     nama: "Ir. Alam Rahmatulloh, S.T., M.T., MCE., IPM.",
@@ -107,41 +116,65 @@ const para_dosen = [
     device: "dev-dsn-sdkasyky-001",
   },
 ];
+
 para_dosen.forEach((d) =>
-  insertUser.run(d.nama, d.username, SEED_DOSEN_PASSWORD, "dosen", d.nip, d.device),
+  insertUser.run(d.nama, d.username, hashedDosenPass, "dosen", d.nip, d.device),
 );
-// tambah lagi 5 dosen secara acak pakai faker
-// Tambah Dosen Acak via Faker
+
+// Tambah 5 Dosen Acak via Faker
 for (let i = 0; i < 5; i++) {
-    const nama = faker.person.fullName();
-    const nip = faker.string.numeric(8);
-    const username = faker.internet.username().toLowerCase();
-    const device = `dev-${faker.string.alphanumeric(8)}`;
-    para_dosen.push({ nama, username, nip, device });
-    insertUser.run(nama, username, SEED_DOSEN_PASSWORD, "dosen", nip, device);
+  const nama = faker.person.fullName();
+  const nip = faker.string.numeric(18);
+  const username = faker.internet.username().toLowerCase();
+  const device = `dev-${faker.string.alphanumeric(8)}`;
+  para_dosen.push({ nama, username, nip, device });
+  insertUser.run(nama, username, hashedDosenPass, "dosen", nip, device);
 }
 
-// Data Mahasiswa
+// 3. Data Mahasiswa Utama
 const mahasiswas = [
-    { nama : "Farhan Esha Putra", username: "mhs_farhan-esha-putra_001", nim: "247006001", device: "dev-mhs-farhan-123" },
-    { nama : "Muhammad Rifki Yusria Hata", username: "mhs_muhammad-rifki-yusria-hata_002", nim: "247006002", device: "dev-mhs-rifki-456" },
-    { nama : "Yasraf Syifa Maulana", username: "mhs_yasraf-syifa-maulana_003", nim: "247006003", device: "dev-mhs-yasraf-789" },
+  {
+    nama: "Farhan Esha Putra",
+    username: "mhs_farhan-esha-putra_001",
+    nim: "247006001",
+    device: "dev-mhs-farhan-123",
+  },
+  {
+    nama: "Muhammad Rifki Yusria Hata",
+    username: "mhs_muhammad-rifki-yusria-hata_002",
+    nim: "247006002",
+    device: "dev-mhs-rifki-456",
+  },
+  {
+    nama: "Yasraf Syifa Maulana",
+    username: "mhs_yasraf-syifa-maulana_003",
+    nim: "247006003",
+    device: "dev-mhs-yasraf-789",
+  },
 ];
 
 mahasiswas.forEach((m) =>
-  insertUser.run(m.nama, m.username, SEED_MHS_PASSWORD, "mahasiswa", m.nim, m.device),
+  insertUser.run(
+    m.nama,
+    m.username,
+    hashedMhsPass,
+    "mahasiswa",
+    m.nim,
+    m.device,
+  ),
 );
-//Data Mahasiswa Acak via Faker
+
+// Tambah 50 Mahasiswa Acak via Faker
 for (let i = 0; i < 50; i++) {
-    const nama = faker.person.fullName();
-    const nim = faker.string.numeric(6);
-    const username = faker.internet.username().toLowerCase();
-    const device = `dev-${faker.string.alphanumeric(8)}`;
-    mahasiswas.push({ nama, username, nim, device });
-    insertUser.run(nama, username, SEED_MHS_PASSWORD, "mahasiswa", nim, device);
+  const nama = faker.person.fullName();
+  const nim = faker.string.numeric(9);
+  const username = faker.internet.username().toLowerCase();
+  const device = `dev-${faker.string.alphanumeric(8)}`;
+  mahasiswas.push({ nama, username, nim, device });
+  insertUser.run(nama, username, hashedMhsPass, "mahasiswa", nim, device);
 }
 
-// Data Kelas
+// 4. Data Kelas
 const insertKelas = db.prepare(`
     INSERT INTO kelas (nama_kelas, dosen_nip) VALUES (?, ?)    
 `);
@@ -156,13 +189,12 @@ daftarKelas.forEach((k) => {
   kelasIds.push(res.lastInsertRowid);
 });
 
-// Isi Tabel nilai
+// 5. Data Nilai
 const insertNilai = db.prepare(`
     INSERT INTO nilai (kelas_id, mahasiswa_nim, nilai_angka, is_final) 
     VALUES (?, ?, ?, ?)
 `);
 mahasiswas.forEach((mhs) => {
-  // Setiap mahasiswa mengambil 1-2 kelas secara acak
   const randomKelasId = faker.helpers.arrayElement(kelasIds);
   const randomNilai = faker.number.float({
     min: 65,
@@ -172,5 +204,7 @@ mahasiswas.forEach((mhs) => {
   insertNilai.run(randomKelasId, mhs.nim, randomNilai, 0);
 });
 
-console.log("[SEED] Berhasil melakukan seeding data acak menggunakan Faker!");
+console.log(
+  "[SEED] Berhasil! Seluruh data terisi & password telah di-hash dengan bcrypt.",
+);
 db.close();
