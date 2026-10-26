@@ -2,7 +2,11 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const db = require('../config/db');
-const { generateAccessToken, generateRefreshToken } = require('../services/jwtService');
+const {
+    generateAccessToken,
+    generateRefreshToken,
+    verifyToken
+} = require('../services/jwtService');
 const { logActivity } = require('../services/auditLogger');
 
 /**
@@ -101,6 +105,94 @@ router.post('/login', (req, res) => {
             },
             accessToken,
             refreshToken
+        }
+    });
+});
+
+router.post('/refresh', (req, res) => {
+    const { refreshToken } = req.body;
+    const deviceId = req.headers['x-device-id'];
+    const endpoint = req.originalUrl || '/auth/refresh';
+
+    if (!refreshToken) {
+        return res.status(400).json({
+            status: "DENY",
+            code: "MISSING_REFRESH_TOKEN",
+            reason: "Refresh token wajib disertakan."
+        });
+    }
+
+    if (!deviceId) {
+        return res.status(400).json({
+            status: "DENY",
+            code: "MISSING_DEVICE_ID",
+            reason: "Header X-Device-ID wajib disertakan."
+        });
+    }
+
+    // Verifikasi Refresh Token
+    const decoded = verifyToken(refreshToken);
+
+    if (!decoded) {
+        logActivity({
+            subject: 'ANONYMOUS',
+            endpoint,
+            deviceId,
+            actionResult: 'DENY',
+            reason: 'INVALID_REFRESH_TOKEN'
+        });
+
+        return res.status(403).json({
+            status: "DENY",
+            code: "INVALID_TOKEN",
+            reason: "Refresh token tidak valid atau sudah expired."
+        });
+    }
+
+    // Zero Trust Check: Device ID matching saat refresh
+    if (decoded.deviceId !== deviceId) {
+        logActivity({
+            subject: 'REFRESH_ATTEMPT',
+            endpoint,
+            deviceId,
+            actionResult: 'DENY',
+            reason: 'REFRESH_DEVICE_MISMATCH'
+        });
+
+        return res.status(403).json({
+            status: "DENY",
+            code: "DEVICE_MISMATCH",
+            reason: "Refresh token ini tidak valid untuk perangkat ini."
+        });
+    }
+
+    // Ambil data user terbaru
+    const user = db.prepare('SELECT * FROM para_pengguna WHERE id = ?').get(decoded.sub);
+
+    if (!user) {
+        return res.status(404).json({
+            status: "DENY",
+            code: "USER_NOT_FOUND",
+            reason: "Pengguna tidak ditemukan."
+        });
+    }
+
+    // Terbitkan Access Token baru
+    const newAccessToken = generateAccessToken(user, deviceId);
+
+    logActivity({
+        subject: user.username,
+        endpoint,
+        deviceId,
+        actionResult: 'ALLOW',
+        reason: 'TOKEN_REFRESH_SUCCESS'
+    });
+
+    return res.json({
+        status: "ALLOW",
+        message: "Access token berhasil diperbarui.",
+        data: {
+            accessToken: newAccessToken
         }
     });
 });

@@ -1,6 +1,7 @@
 const express = require('express');
 const config = require('./config/env');
 const { verifyDevice } = require('./middlewares/policyEngine');
+const { authenticateToken } = require('./middlewares/auth');
 const authRoutes = require('./routes/auth');
 
 const app = express();
@@ -22,7 +23,7 @@ app.get('/', (req, res) => {
 app.use('/auth', authRoutes);
 
 // 3. Protected Route (Wajib Verifikasi Device ID via Policy Engine)
-app.get('/nilai', verifyDevice, (req, res) => {
+app.get('/nilai', verifyDevice, authenticateToken, (req, res) => {
     res.json({
         status: "ALLOW",
         message: "Data nilai (Simulasi)",
