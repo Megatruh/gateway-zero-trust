@@ -1,31 +1,36 @@
 const express = require('express');
 const config = require('./config/env');
-const {verifyDevice} = require('./middlewares/policyEngine');
+const { verifyDevice } = require('./middlewares/policyEngine');
+const { authenticateToken } = require('./middlewares/auth');
+const authRoutes = require('./routes/auth');
 
 const app = express();
 
-app.use(express.json()); // melakukan parsing json
+// Middleware parsing JSON body
+app.use(express.json());
 
-app.use(verifyDevice);
-
-// console.log(verifyDevice);
-
-// routes
+// 1. Public - Tanpa Middleware Verifikasi Device
 app.get('/', (req, res) => {
     res.json({
-        status:"ALLOW",
-        message:"API Gateway Zero Trust Berjalan !"
+        status: "ONLINE",
+        service: "Zero Trust API Gateway",
+        version: "1.0.0",
+        timestamp: new Date().toISOString()
     });
 });
 
-app.get('/nilai', (req, res)=>{
+// 2. Public Auth Route (Login & Token Issuance)
+app.use('/auth', authRoutes);
+
+// 3. Protected Route (Wajib Verifikasi Device ID via Policy Engine)
+app.get('/nilai', verifyDevice, authenticateToken, (req, res) => {
     res.json({
-        status:"ALLOW",
-        message:"Data nilai (Simulais)"
+        status: "ALLOW",
+        message: "Data nilai (Simulasi)",
+        user: req.user
     });
 });
 
-// menjalankan server
 app.listen(config.PORT, () => {
-    console.log(`[Gateway] menyala di http://localhost:${config.PORT}`);
-})
+    console.log(`[GATEWAY] Server running on port ${config.PORT}`);
+});
