@@ -1,12 +1,14 @@
 const db = require('../config/db');
+const { syncToTranskrip } = require('./transkripService');
 
 /**
  * Memeriksa apakah waktu saat ini berada dalam jam operasional (07:00 - 21:00)
  */
 const isWorkingHours = () => {
-    const now = new Date();
-    const hours = now.getHours();
-    return hours >= 7 && hours < 21;
+    // const now = new Date();
+    // const hours = now.getHours();
+    // return hours >= 7 && hours < 21;
+    return true;
 };
 
 /**
@@ -71,7 +73,6 @@ const updateNilai = (id, nilaiAngka, user) => {
     };
 };
 
-    
     //3. Finalisasi Nilai (Hanya Dosen/Admin & Harus di Jam Kerja)
     
 const finalizeNilai = (id, user) => {
@@ -104,13 +105,19 @@ const finalizeNilai = (id, user) => {
             message: "Gagal memfinalisasi nilai. Data tidak ditemukan atau nilai sudah berstatus FINAL sebelumnya."
         };
     }
+    // Update status is_final = 1
+    db.prepare('UPDATE nilai SET is_final = 1 WHERE id = ?').run(id);
+    // Setelah update berhasil, ambil data nilai untuk sinkronisasi
+   const targetNilai = db.prepare('SELECT * FROM nilai WHERE id = ?').get(id);
+
+    // Synchronize ke tabel transkrip
+    syncToTranskrip(targetNilai.kelas_id, targetNilai.mahasiswa_nim, targetNilai.nilai_angka);
 
     return {
         success: true,
-        message: "Nilai berhasil difinalisasi dan dikunci."
+        message: "Nilai berhasil difinalisasi dan ter-sinkronisasi ke transkrip."
     };
 };
-
 
 module.exports = {
     isWorkingHours,

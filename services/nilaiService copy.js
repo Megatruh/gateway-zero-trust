@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { syncToTranskrip } = require('./transkripService'); // Import fungsi sync
 
 /**
  * Memeriksa apakah waktu saat ini berada dalam jam operasional (07:00 - 21:00)
@@ -21,7 +22,6 @@ const getNilai = (user) => {
             JOIN para_pengguna u ON n.mahasiswa_nim = u.nim_or_nip
         `).all();
     } else {
-        // Mahasiswa hanya bisa melihat nilainya sendiri
         return db.prepare(`
             SELECT n.id, k.nama_kelas, n.mahasiswa_nim, n.nilai_angka, n.is_final
             FROM nilai n
@@ -32,10 +32,9 @@ const getNilai = (user) => {
 };
 
 /**
- * Input / Update Nilai Mahasiswa (Hanya Dosen/Admin & Harus di Jam Kerja)
+ * Input / Update Nilai Mahasiswa
  */
 const updateNilai = (id, nilaiAngka, user) => {
-    // 1. Check RBAC (Otorisasi Peran Utama)
     if (user.role !== 'dosen' && user.role !== 'admin') {
         return {
             success: false,
@@ -44,7 +43,6 @@ const updateNilai = (id, nilaiAngka, user) => {
         };
     }
 
-    // 2. Check Jam Kerja (Kondisi Kontekstual Dosen/Admin)
     if (!isWorkingHours()) {
         return {
             success: false,
@@ -53,7 +51,6 @@ const updateNilai = (id, nilaiAngka, user) => {
         };
     }
 
-    // 3. Update DB
     const stmt = db.prepare('UPDATE nilai SET nilai_angka = ? WHERE id = ? AND is_final = 0');
     const result = stmt.run(nilaiAngka, id);
 
@@ -72,10 +69,9 @@ const updateNilai = (id, nilaiAngka, user) => {
 };
 
 /**
- * Finalisasi Nilai (Hanya Dosen/Admin & Harus di Jam Kerja)
+ * Finalisasi Nilai + Auto Sync ke Transkrip
  */
 const finalizeNilai = (id, user) => {
-    // 1. Check RBAC
     if (user.role !== 'dosen' && user.role !== 'admin') {
         return {
             success: false,
@@ -84,7 +80,6 @@ const finalizeNilai = (id, user) => {
         };
     }
 
-    // 2. Check Jam Kerja
     if (!isWorkingHours()) {
         return {
             success: false,
@@ -93,11 +88,10 @@ const finalizeNilai = (id, user) => {
         };
     }
 
-    // 3. Update DB: Set is_final = 1
-    const stmt = db.prepare('UPDATE nilai SET is_final = 1 WHERE id = ? AND is_final = 0');
-    const result = stmt.run(id);
+    // Ambil data nilai yang akan difinalisasi
+    const targetNilai = db.prepare('SELECT * FROM nilai WHERE id = ? AND is_final = 0').get(id);
 
-    if (result.changes === 0) {
+    if (!targetNilai) {
         return {
             success: false,
             code: "FINALIZE_FAILED",
@@ -105,9 +99,15 @@ const finalizeNilai = (id, user) => {
         };
     }
 
+    // Update status is_final = 1
+    db.prepare('UPDATE nilai SET is_final = 1 WHERE id = ?').run(id);
+
+    // Synchronize ke tabel transkrip
+    syncToTranskrip(targetNilai.kelas_id, targetNilai.mahasiswa_nim, targetNilai.nilai_angka);
+
     return {
         success: true,
-        message: "Nilai berhasil difinalisasi dan dikunci."
+        message: "Nilai berhasil difinalisasi dan ter-sinkronisasi ke transkrip."
     };
 };
 

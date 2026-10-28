@@ -4,6 +4,7 @@ const { verifyDevice } = require('./middlewares/policyEngine');
 const { authenticateToken } = require('./middlewares/auth');
 const authRoutes = require('./routes/auth');
 const nilaiRoutes = require('./routes/nilai');
+const transkripRoutes = require('./routes/transkrip');
 
 const app = express();
 
@@ -25,6 +26,7 @@ app.use('/auth', authRoutes);
 
 // 3. Protected Route (Wajib Verifikasi Device ID & JWT Token)
 app.use('/nilai', verifyDevice, authenticateToken, nilaiRoutes);
+app.use('/transkrip', verifyDevice, authenticateToken, transkripRoutes);
 
 app.listen(config.PORT, () => {
     console.log(`[GATEWAY] Server running on port ${config.PORT}`);
