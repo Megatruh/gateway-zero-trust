@@ -3,6 +3,7 @@ const config = require('./config/env');
 const { verifyDevice } = require('./middlewares/policyEngine');
 const { authenticateToken } = require('./middlewares/auth');
 const authRoutes = require('./routes/auth');
+const nilaiRoutes = require('./routes/nilai');
 
 const app = express();
 
@@ -22,14 +23,8 @@ app.get('/', (req, res) => {
 // 2. Public Auth Route (Login & Token Issuance)
 app.use('/auth', authRoutes);
 
-// 3. Protected Route (Wajib Verifikasi Device ID via Policy Engine)
-app.get('/nilai', verifyDevice, authenticateToken, (req, res) => {
-    res.json({
-        status: "ALLOW",
-        message: "Data nilai (Simulasi)",
-        user: req.user
-    });
-});
+// 3. Protected Route (Wajib Verifikasi Device ID & JWT Token)
+app.use('/nilai', verifyDevice, authenticateToken, nilaiRoutes);
 
 app.listen(config.PORT, () => {
     console.log(`[GATEWAY] Server running on port ${config.PORT}`);
