@@ -88,7 +88,7 @@ if (!penggunaColumns.includes("refresh_token")) {
 
 // Reset data lama
 db.exec(
-  `DELETE FROM transkrip; DELETE FROM nilai; DELETE FROM kelas; DELETE FROM para_pengguna; DELETE FROM audit_logs;`,
+  `DELETE FROM transkrip; DELETE FROM nilai; DELETE FROM kelas; DELETE FROM para_pengguna; DELETE FROM audit_logs; DELETE FROM sqlite_sequence;`,
 );
 
 const insertUser = db.prepare(`
@@ -199,7 +199,11 @@ const insertNilai = db.prepare(`
     INSERT INTO nilai (kelas_id, mahasiswa_nim, nilai_angka, is_final) 
     VALUES (?, ?, ?, ?)
 `);
-mahasiswas.forEach((mhs) => {
+// Pastikan mahasiswa pertama (Farhan) terdaftar di Kelas 1 (Keamanan Informasi A) untuk keperluan testing sesuai panduan
+insertNilai.run(kelasIds[0], mahasiswas[0].nim, 78.5, 0);
+
+// Mahasiswa berikutnya
+mahasiswas.slice(1).forEach((mhs) => {
   const randomKelasId = faker.helpers.arrayElement(kelasIds);
   const randomNilai = faker.number.float({
     min: 65,

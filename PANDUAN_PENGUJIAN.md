@@ -176,7 +176,7 @@ curl -X POST http://localhost:3000/kelas/1/finalisasi \
 ### 16. Coba Update Nilai yang Sudah Final (Harus Gagal)
 
 ```bash
-curl -X PUT http://localhost:3000/nilai/1 \
+curl -X PUT http://localhost:3000/nilai/{id_kelas} \
   -H "Content-Type: application/json" \
   -H "X-Device-ID: dev-dsn-almrhmtl-001" \
   -H "Authorization: Bearer <paste-dosen-token>" \

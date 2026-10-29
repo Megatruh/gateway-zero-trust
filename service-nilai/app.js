@@ -27,6 +27,7 @@ app.get('/health', (req, res) => {
 
 // Semua endpoint wajib verifikasi gateway secret dan token
 app.use('/nilai', verifyGatewaySecret, verifyToken, nilaiRoutes);
+app.use('/', verifyGatewaySecret, verifyToken, nilaiRoutes);
 
 app.listen(config.PORT, () => {
     console.log(`[SERVICE NILAI] Running on port ${config.PORT}`);

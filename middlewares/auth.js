@@ -47,6 +47,19 @@ const authenticateToken = (req, res, next) => {
         });
     }
 
+    // S2S Zero Trust: Token service tidak memiliki physical deviceId
+    if (decoded.role === 'service') {
+        logActivity({
+            subject: decoded.sub || 'SERVICE',
+            endpoint,
+            deviceId: 'INTERNAL_SERVICE',
+            actionResult: 'ALLOW',
+            reason: 'SERVICE_ACCESS_ALLOWED'
+        });
+        req.user = decoded;
+        return next();
+    }
+
     // 3. Zero Trust Strict Check: Pastikan Device ID di Token sama dengan Device ID di Header saat ini
     if (decoded.deviceId !== deviceId) {
         logActivity({

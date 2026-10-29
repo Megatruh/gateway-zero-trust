@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const config = require('../config/env');
 const { logActivity } = require('../services/auditLogger');
+const { verifyToken } = require('../services/jwtService');
 
 // Cek jam operasional (07:00 - 21:00)
 const isWorkingHours = () => {
@@ -13,6 +14,17 @@ const isWorkingHours = () => {
  * Digunakan di gateway sebelum verifikasi JWT
  */
 const verifyDevice = (req, res, next) => {
+    // S2S Zero Trust: Jika request membawa Service Token valid, izinkan tanpa device ID fisik
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (token) {
+        const decoded = verifyToken(token);
+        if (decoded && decoded.role === 'service') {
+            req.deviceId = 'INTERNAL_SERVICE';
+            return next();
+        }
+    }
+
     const deviceId = req.headers['x-device-id'];
     const endpoint = req.originalUrl || req.url;
 
