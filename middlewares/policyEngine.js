@@ -1,12 +1,33 @@
 const db = require('../config/db');
+const config = require('../config/env');
 const { logActivity } = require('../services/auditLogger');
+const { verifyToken } = require('../services/jwtService');
 
-// Middleware untuk memverifikasi apakah X-Device-ID terdaftar di database
+// Cek jam operasional (07:00 - 21:00)
+const isWorkingHours = () => {
+    const hours = new Date().getHours();
+    return hours >= config.ACCESS_HOUR_START && hours < config.ACCESS_HOUR_END;
+};
+
+/**
+ * Middleware untuk memverifikasi Device ID terdaftar di database
+ * Digunakan di gateway sebelum verifikasi JWT
+ */
 const verifyDevice = (req, res, next) => {
-    const deviceId = req.headers['x-device-id'];
-    const endpoint = req.originaUrl || req.url;
+    // S2S Zero Trust: Jika request membawa Service Token valid, izinkan tanpa device ID fisik
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (token) {
+        const decoded = verifyToken(token);
+        if (decoded && decoded.role === 'service') {
+            req.deviceId = 'INTERNAL_SERVICE';
+            return next();
+        }
+    }
 
-    // 1. Skenario DENY: Header tidak dikirim
+    const deviceId = req.headers['x-device-id'];
+    const endpoint = req.originalUrl || req.url;
+
     if (!deviceId) {
         logActivity({
             subject: 'ANONYMOUS',
@@ -19,17 +40,16 @@ const verifyDevice = (req, res, next) => {
         return res.status(400).json({
             status: "DENY",
             code: "MISSING_DEVICE_ID",
-            reason: "Header X-Device-ID wajib disertakan untuk setiap request user."
+            reason: "Header X-Device-ID wajib disertakan."
         });
     }
 
-    // 2. Cari user berdasarkan device_id di database
-    const user = db.prepare('SELECT id, username, role, nim_or_nip FROM para_pengguna WHERE device_id = ?').get(deviceId);
+    // Cek apakah device terdaftar di database
+    const user = db.prepare('SELECT * FROM para_pengguna WHERE device_id = ?').get(deviceId);
 
-    // 3. Skenario DENY: Device ID tidak terdaftar
     if (!user) {
         logActivity({
-            subject: 'UNREGISTERED_DEVICE',
+            subject: 'ANONYMOUS',
             endpoint,
             deviceId,
             actionResult: 'DENY',
@@ -39,26 +59,13 @@ const verifyDevice = (req, res, next) => {
         return res.status(403).json({
             status: "DENY",
             code: "UNREGISTERED_DEVICE",
-            reason: "Device ID tidak terdaftar dalam sistem."
+            reason: "Device ID tidak terdaftar di sistem."
         });
     }
 
-    // 4. Skenario ALLOW: Device ID valid & terdaftar
-    logActivity({
-        subject: user.username,
-        endpoint,
-        deviceId,
-        actionResult: 'ALLOW',
-        reason: 'DEVICE_VERIFIED'
-    });
-
-    // Sematkan data user dan deviceId ke objek request
-    req.user = user;
+    // Sematkan device ID ke request untuk digunakan di middleware berikutnya
     req.deviceId = deviceId;
-
     next();
 };
 
-module.exports = {
-    verifyDevice
-};
+module.exports = { verifyDevice, isWorkingHours };

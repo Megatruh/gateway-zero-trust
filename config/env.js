@@ -1,33 +1,29 @@
 require('dotenv').config();
 
-/**
- * Helper untuk memastikan variabel sensitif wajib ada di .env.
- * Jika tidak ditemukan, aplikasi akan langsung dihentikan (fail-fast).
- */
 const requireEnv = (key) => {
     if (!process.env[key]) {
         console.error(`[FATAL ERROR] Variabel lingkungan '${key}' tidak ditemukan di file .env!`);
-        process.exit(1); // Hentikan eksekusi program
+        process.exit(1);
     }
     return process.env[key];
 };
 
 module.exports = {
-    // Port & Secret
     PORT: process.env.PORT || 3000,
+    SERVICE_NILAI_PORT: process.env.SERVICE_NILAI_PORT || 3001,
+    SERVICE_TRANSKRIP_PORT: process.env.SERVICE_TRANSKRIP_PORT || 3002,
+
     GATEWAY_SECRET: requireEnv('GATEWAY_SECRET'),
     JWT_SECRET: requireEnv('JWT_SECRET'),
-    
-    // Service URLs
-    SERVICE_NILAI_URL: process.env.SERVICE_NILAI_URL || 'http://localhost:3001',
-    SERVICE_TRANSKRIP_URL: process.env.SERVICE_TRANSKRIP_URL || 'http://localhost:3002',
+    GATEWAY_URL: process.env.GATEWAY_URL || 'http://localhost:3000',
 
-    // Default Passwords (Diambil wajib dari .env tanpa fallback di kode)
+    SERVICE_CLIENT_ID: requireEnv('SERVICE_CLIENT_ID'),
+    SERVICE_CLIENT_SECRET: requireEnv('SERVICE_CLIENT_SECRET'),
+
     SEED_ADMIN_PASSWORD: requireEnv('SEED_ADMIN_PASSWORD'),
     SEED_DOSEN_PASSWORD: requireEnv('SEED_DOSEN_PASSWORD'),
     SEED_MHS_PASSWORD: requireEnv('SEED_MHS_PASSWORD'),
 
-    // Jam Operasional Edit/Finalisasi Nilai
     ACCESS_HOUR_START: parseInt(process.env.ACCESS_HOUR_START || '7', 10),
     ACCESS_HOUR_END: parseInt(process.env.ACCESS_HOUR_END || '21', 10)
 };

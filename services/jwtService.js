@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 const config = require('../config/env');
 
 /**
- * Menerbitkan Access Token untuk User (15 Menit)
+ * Menerbitkan Access Token untuk User (10 Menit)
  */
 const generateAccessToken = (user, deviceId) => {
     return jwt.sign(
@@ -14,12 +14,12 @@ const generateAccessToken = (user, deviceId) => {
             deviceId: deviceId
         },
         config.JWT_SECRET,
-        { expiresIn: '15m' }
+        { expiresIn: '10m' }
     );
 };
 
 /**
- * Menerbitkan Refresh Token (7 Hari)
+ * Menerbitkan Refresh Token (1 Hari)
  */
 const generateRefreshToken = (user, deviceId) => {
     return jwt.sign(
@@ -28,7 +28,7 @@ const generateRefreshToken = (user, deviceId) => {
             deviceId: deviceId
         },
         config.JWT_SECRET,
-        { expiresIn: '7d' }
+        { expiresIn: '1d' }
     );
 };
 

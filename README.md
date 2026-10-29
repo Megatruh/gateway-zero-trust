@@ -1,33 +1,58 @@
 # Gateway Zero Trust
 
-API gateway sederhana berbasis Node.js/Express untuk simulasi arsitektur
-**Zero Trust** pada sistem akademik. Setiap request yang mengakses data
-terproteksi harus melewati dua pemeriksaan:
+API gateway berbasis Node.js/Express untuk simulasi arsitektur **Zero Trust**
+pada sistem akademik sesuai NIST SP 800-207. Sistem ini terdiri dari tiga
+komponen terpisah:
 
-1. `X-Device-ID` harus terdaftar dan cocok dengan pengguna di database.
-2. Access token JWT harus valid dan diterbitkan untuk device yang sama.
+1. **API Gateway (port 3000)** - Policy Enforcement Point (PEP) yang menjadi
+   satu-satunya pintu masuk. Memeriksa setiap request, menerbitkan token,
+   mencatat audit log, dan meneruskan request ke service yang sesuai.
+2. **Service Nilai (port 3001)** - Resource yang menyimpan data nilai dan kelas.
+   Hanya menerima request yang melalui gateway dengan gateway secret yang valid.
+3. **Service Transkrip (port 3002)** - Resource yang menyimpan data transkrip
+   mahasiswa. Hanya menerima request yang melalui gateway dengan gateway secret
+   yang valid.
 
-Gateway menyediakan autentikasi pengguna, refresh access token, pemeriksaan
-device, endpoint data nilai simulasi dengan kontrol akses berbasis role, serta
-audit log untuk keputusan `ALLOW` dan `DENY`.
+Setiap request dari user wajib membawa:
+1. `X-Device-ID` yang terdaftar dan cocok dengan pengguna di database.
+2. Access token JWT yang valid dan diterbitkan untuk device yang sama.
+
+Panggilan antar-service menggunakan token service yang diterbitkan oleh gateway.
 
 ## Fitur
 
-- Login dengan username, password bcrypt, dan device ID.
-- Access token JWT dengan masa berlaku 15 menit.
-- Refresh token JWT dengan masa berlaku 7 hari.
-- Verifikasi device pada login, refresh token, dan endpoint terproteksi.
-- Kontrol akses data nilai berdasarkan role pengguna.
-- Pembaruan dan finalisasi nilai oleh admin/dosen pada jam kerja.
-- SQLite melalui `better-sqlite3`.
-- Seeder untuk membuat schema dan data demo.
-- Audit log untuk aktivitas autentikasi dan akses device.
-- Fail-fast apabila secret atau password seeder wajib belum dikonfigurasi.
+- **API Gateway**:
+  - Login dengan username, password bcrypt, dan device ID.
+  - Access token JWT dengan masa berlaku 10 menit.
+  - Refresh token JWT dengan masa berlaku 1 hari, disimpan di database.
+  - Endpoint untuk mendapatkan token service (5 menit, role: service).
+  - Endpoint untuk logout (mencabut refresh token).
+  - Verifikasi device pada semua endpoint terproteksi.
+  - Audit log untuk semua keputusan ALLOW/DENY.
+  - Proxy request ke service menggunakan http-proxy-middleware.
+  - Menambahkan header X-Gateway-Secret saat meneruskan request ke service.
+
+- **Service Nilai**:
+  - GET /nilai - melihat nilai sesuai role (mahasiswa: milik sendiri, dosen: kelas yang diampu, admin: semua).
+  - PUT /nilai/:id - memperbarui nilai (dosen/admin pada jam kerja, nilai belum final).
+  - POST /kelas/:id/finalisasi - memfinalisasi kelas dan sinkronisasi ke transkrip.
+  - Verifikasi gateway secret dan JWT token.
+
+- **Service Transkrip**:
+  - GET /transkrip/:nim - melihat transkrip sesuai role (mahasiswa: NIM sendiri, admin: semua).
+  - POST /transkrip/sinkron - sinkronisasi nilai ke transkrip (hanya token service).
+  - Verifikasi gateway secret dan JWT token.
+
+- **Database**:
+  - SQLite melalui `better-sqlite3`.
+  - Seeder untuk membuat schema dan data demo.
+  - Shared database untuk kedua service.
 
 ## Teknologi
 
-- Node.js
+- Node.js 18+
 - Express 5
+- http-proxy-middleware
 - SQLite (`better-sqlite3`)
 - JSON Web Token (`jsonwebtoken`)
 - Password hashing (`bcryptjs`)
@@ -44,6 +69,9 @@ audit log untuk keputusan `ALLOW` dan `DENY`.
 git clone https://github.com/Megatruh/gateway-zero-trust.git
 cd gateway-zero-trust
 npm install
+cd service-nilai && npm install
+cd ../service-transkrip && npm install
+cd ..
 ```
 
 Buat file `.env` dari template:
@@ -56,14 +84,20 @@ Isi seluruh nilai wajib pada `.env`. Contoh konfigurasi lokal:
 
 ```dotenv
 PORT=3000
-GATEWAY_SECRET=ganti-dengan-secret-gateway-yang-kuat
-JWT_SECRET=ganti-dengan-secret-jwt-yang-kuat
-SERVICE_NILAI_URL=http://localhost:3001
-SERVICE_TRANSKRIP_URL=http://localhost:3002
+SERVICE_NILAI_PORT=3001
+SERVICE_TRANSKRIP_PORT=3002
+GATEWAY_SECRET=super-secret-gateway-key-please-change-in-production
+JWT_SECRET=jwt-secret-key-please-change-in-production
+GATEWAY_URL=http://localhost:3000
 
-SEED_ADMIN_PASSWORD=password-admin-lokal
-SEED_DOSEN_PASSWORD=password-dosen-lokal
-SEED_MHS_PASSWORD=password-mahasiswa-lokal
+# Service Client Credentials (untuk POST /auth/service)
+SERVICE_CLIENT_ID=nilai-service-id
+SERVICE_CLIENT_SECRET=nilai-service-secret-key-please-change
+
+# Default Passwords untuk Seeder
+SEED_ADMIN_PASSWORD=admin123
+SEED_DOSEN_PASSWORD=dosen123
+SEED_MHS_PASSWORD=mahasiswa123
 
 ACCESS_HOUR_START=7
 ACCESS_HOUR_END=21
@@ -81,39 +115,36 @@ demo baru. Jalankan seeder setelah konfigurasi `.env` selesai:
 node scripts/seed.js
 ```
 
-Kemudian jalankan gateway:
+Jalankan ketiga aplikasi dalam terminal terpisah:
 
+**Terminal 1 - API Gateway:**
 ```bash
 node app.js
 ```
 
-Server berjalan pada `http://localhost:3000` secara default. `package.json`
-saat ini belum menyediakan script `start` atau `dev`, sehingga aplikasi
-dijalankan langsung dengan `node app.js`.
+**Terminal 2 - Service Nilai:**
+```bash
+cd service-nilai
+node app.js
+```
+
+**Terminal 3 - Service Transkrip:**
+```bash
+cd service-transkrip
+node app.js
+```
 
 ## Endpoint
 
-### Health check
+### API Gateway (port 3000)
 
+#### Health check
 ```http
 GET /
 ```
-
 Tidak memerlukan autentikasi.
 
-Contoh respons:
-
-```json
-{
-  "status": "ONLINE",
-  "service": "Zero Trust API Gateway",
-  "version": "1.0.0",
-  "timestamp": "2026-10-26T00:00:00.000Z"
-}
-```
-
-### Login
-
+#### Login
 ```http
 POST /auth/login
 Content-Type: application/json
@@ -121,31 +152,22 @@ X-Device-ID: <device-id>
 ```
 
 Body:
-
 ```json
 {
   "username": "admin1",
-  "password": "password-admin-lokal"
+  "password": "admin123"
 }
 ```
 
 Contoh:
-
 ```bash
 curl -i -X POST http://localhost:3000/auth/login \
   -H "Content-Type: application/json" \
   -H "X-Device-ID: dev-admin-1" \
-  -d '{"username":"admin1","password":"password-admin-lokal"}'
+  -d '{"username":"admin1","password":"admin123"}'
 ```
 
-Respons sukses berisi:
-
-- informasi dasar pengguna;
-- `accessToken`;
-- `refreshToken`.
-
-### Refresh access token
-
+#### Refresh access token
 ```http
 POST /auth/refresh
 Content-Type: application/json
@@ -153,109 +175,100 @@ X-Device-ID: <device-id>
 ```
 
 Body:
-
 ```json
 {
   "refreshToken": "<refresh-token-dari-login>"
 }
 ```
 
-Contoh dengan `jq`:
-
-```bash
-REFRESH_TOKEN="<refresh-token-dari-login>"
-
-curl -i -X POST http://localhost:3000/auth/refresh \
-  -H "Content-Type: application/json" \
-  -H "X-Device-ID: dev-admin-1" \
-  -d "{\"refreshToken\":\"$REFRESH_TOKEN\"}"
-```
-
-Header `X-Device-ID` harus sama dengan device ID yang tertanam di refresh
-token. Endpoint ini hanya menerbitkan access token baru; refresh token lama
-tetap menjadi tanggung jawab client untuk disimpan secara aman.
-
-### Mengakses data nilai terproteksi
-
+#### Logout
 ```http
-GET /nilai
-X-Device-ID: <device-id>
-Authorization: Bearer <access-token>
-```
-
-Contoh:
-
-```bash
-ACCESS_TOKEN="<access-token-dari-login>"
-
-curl -i http://localhost:3000/nilai \
-  -H "X-Device-ID: dev-admin-1" \
-  -H "Authorization: Bearer $ACCESS_TOKEN"
-```
-
-Urutan middleware endpoint ini adalah:
-
-1. `verifyDevice`: memastikan device terdaftar di `para_pengguna`.
-2. `authenticateToken`: memverifikasi JWT dan kecocokan device pada token.
-
-Data yang dikembalikan bergantung pada role:
-
-- `admin` dan `dosen` dapat melihat seluruh data nilai.
-- `mahasiswa` hanya dapat melihat nilai dengan `mahasiswa_nim` miliknya.
-
-### Memperbarui nilai
-
-```http
-PUT /nilai/:id
+POST /auth/logout
 Content-Type: application/json
 X-Device-ID: <device-id>
-Authorization: Bearer <access-token>
 ```
 
 Body:
-
 ```json
 {
-  "nilaiAngka": 85
+  "refreshToken": "<refresh-token-dari-login>"
 }
 ```
 
-Contoh:
-
-```bash
-curl -i -X PUT http://localhost:3000/nilai/1 \
-  -H "Content-Type: application/json" \
-  -H "X-Device-ID: dev-dsn-almrhmtl-001" \
-  -H "Authorization: Bearer $ACCESS_TOKEN" \
-  -d '{"nilaiAngka":85}'
-```
-
-Endpoint ini hanya dapat digunakan oleh `admin` dan `dosen` pada jam kerja
-07:00 sampai sebelum 21:00. Nilai yang sudah difinalisasi tidak dapat
-diperbarui. Field `nilaiAngka` wajib disertakan.
-
-### Memfinalisasi dan mengunci nilai
-
+#### Get Service Token (untuk inter-service communication)
 ```http
-POST /nilai/finalize/:id
-X-Device-ID: <device-id>
-Authorization: Bearer <access-token>
+POST /auth/service
+Content-Type: application/json
 ```
 
-Contoh:
-
-```bash
-curl -i -X POST http://localhost:3000/nilai/finalize/1 \
-  -H "X-Device-ID: dev-dsn-almrhmtl-001" \
-  -H "Authorization: Bearer $ACCESS_TOKEN"
+Body:
+```json
+{
+  "client_id": "nilai-service-id",
+  "client_secret": "nilai-service-secret-key-please-change"
+}
 ```
 
-Finalisasi hanya dapat dilakukan oleh `admin` dan `dosen` pada jam kerja
-07:00 sampai sebelum 21:00. Setelah berhasil, `is_final` diubah menjadi `1`
-dan nilai tidak dapat diperbarui lagi.
+#### Endpoint Nilai (proxy ke Service Nilai)
+```http
+GET /nilai
+PUT /nilai/:id
+POST /kelas/:id/finalisasi
+```
 
-Semua endpoint di bawah `/nilai` memerlukan `X-Device-ID` yang terdaftar,
-access token JWT yang valid, serta kecocokan device ID pada header dan token.
+Semua endpoint ini memerlukan:
+- Header `X-Device-ID` yang terdaftar
+- Header `Authorization: Bearer <access-token>`
+
+#### Endpoint Transkrip (proxy ke Service Transkrip)
+```http
+GET /transkrip/:nim
+POST /transkrip/sinkron
+```
+
+Semua endpoint ini memerlukan:
+- Header `X-Device-ID` yang terdaftar
+- Header `Authorization: Bearer <access-token>` (untuk GET) atau token service (untuk POST /sinkron)
+
+### Service Nilai (port 3001)
+
+Service ini hanya menerima request yang melalui gateway dengan header
+`X-Gateway-Secret` yang valid dan token JWT yang valid.
+
+#### GET /nilai
+Mengambil data nilai sesuai role:
+- Mahasiswa: hanya nilai miliknya sendiri
+- Dosen: hanya nilai pada kelas yang diampu
+- Admin: semua nilai
+
+#### PUT /nilai/:id
+Memperbarui nilai:
+- Hanya dosen dan admin
+- Hanya pada jam kerja (07:00-21:00)
+- Hanya nilai yang belum difinalisasi
+- Dosen hanya bisa update nilai pada kelas yang diampu
+
+#### POST /kelas/:id/finalisasi
+Memfinalisasi kelas:
+- Hanya dosen dan admin
+- Hanya pada jam kerja (07:00-21:00)
+- Dosen hanya bisa finalisasi kelas yang diampu
+- Setelah finalisasi, nilai disinkronkan ke Service Transkrip melalui gateway
+
+### Service Transkrip (port 3002)
+
+Service ini hanya menerima request yang melalui gateway dengan header
+`X-Gateway-Secret` yang valid dan token JWT yang valid.
+
+#### GET /transkrip/:nim
+Mengambil transkrip mahasiswa:
+- Mahasiswa: hanya transkrip miliknya sendiri
+- Admin: semua transkrip
+
+#### POST /transkrip/sinkron
+Sinkronisasi nilai ke transkrip:
+- Hanya menerima token service (role: service)
+- Digunakan oleh Service Nilai setelah finalisasi kelas
 
 ## Data demo hasil seeding
 
@@ -282,24 +295,40 @@ acak menggunakan Faker.
 
 ```text
 .
-├── app.js                  # Entry point Express
+├── app.js                      # Entry point API Gateway
 ├── config/
-│   ├── db.js               # Koneksi SQLite
-│   └── env.js              # Validasi dan pembacaan environment
+│   ├── db.js                   # Koneksi SQLite
+│   └── env.js                  # Validasi dan pembacaan environment
 ├── middlewares/
-│   ├── auth.js             # Verifikasi JWT dan device pada token
-│   └── policyEngine.js     # Verifikasi device ke database
+│   ├── auth.js                 # Verifikasi JWT dan device pada token
+│   └── policyEngine.js         # Verifikasi device ke database
 ├── routes/
-│   ├── auth.js             # Login dan refresh token
-│   └── nilai.js            # Baca, ubah, dan finalisasi nilai
+│   └── auth.js                 # Login, refresh, logout, service token
 ├── scripts/
-│   └── seed.js             # Schema dan data demo
+│   └── seed.js                 # Schema dan data demo
 ├── services/
-│   ├── auditLogger.js      # Pencatatan aktivitas ke audit_logs
-│   ├── jwtService.js       # Pembuatan dan verifikasi JWT
-│   └── nilaiService.js     # Akses, pembaruan, dan finalisasi nilai
-├── database.sqlite         # Database SQLite lokal
-├── .env.example            # Template konfigurasi
+│   ├── auditLogger.js          # Pencatatan aktivitas ke audit_logs
+│   └── jwtService.js           # Pembuatan dan verifikasi JWT
+├── service-nilai/              # Service Nilai (port 3001)
+│   ├── app.js
+│   ├── config/
+│   │   ├── db.js
+│   │   └── env.js
+│   ├── middlewares/
+│   │   └── auth.js             # Verifikasi gateway secret dan token
+│   └── routes/
+│       └── nilai.js
+├── service-transkrip/          # Service Transkrip (port 3002)
+│   ├── app.js
+│   ├── config/
+│   │   ├── db.js
+│   │   └── env.js
+│   ├── middlewares/
+│   │   └── auth.js             # Verifikasi gateway secret dan token
+│   └── routes/
+│       └── transkrip.js
+├── database.sqlite             # Database SQLite lokal (shared)
+├── .env.example                # Template konfigurasi
 └── package.json
 ```
 
@@ -308,10 +337,10 @@ acak menggunakan Faker.
 | HTTP | Kode | Keterangan |
 |---:|---|---|
 | 200 | `ALLOW` | Request berhasil |
-| 400 | `MISSING_CREDENTIALS` / `MISSING_DEVICE_ID` / `MISSING_REFRESH_TOKEN` / `MISSING_INPUT` / `UPDATE_FAILED` / `FINALIZE_FAILED` | Input atau header wajib tidak ada, atau operasi nilai gagal |
-| 401 | `INVALID_CREDENTIALS` / `UNAUTHORIZED` | Kredensial atau access token tidak tersedia/salah |
-| 403 | `INVALID_TOKEN` / `DEVICE_MISMATCH` / `UNREGISTERED_DEVICE` / `FORBIDDEN` / `OUT_OF_HOURS` | Token, device, role, atau waktu akses tidak diizinkan |
-| 404 | `USER_NOT_FOUND` | Pengguna pada refresh token tidak ditemukan |
+| 400 | `MISSING_CREDENTIALS` / `MISSING_DEVICE_ID` / `MISSING_REFRESH_TOKEN` / `MISSING_INPUT` / `UPDATE_FAILED` / `FINALIZE_FAILED` | Input atau header wajib tidak ada, atau operasi gagal |
+| 401 | `INVALID_CREDENTIALS` / `UNAUTHORIZED` / `INVALID_TOKEN` | Kredensial atau token tidak tersedia/salah/kedaluwarsa |
+| 403 | `DEVICE_MISMATCH` / `UNREGISTERED_DEVICE` / `FORBIDDEN` / `OUT_OF_HOURS` / `INVALID_GATEWAY_SECRET` | Device, role, waktu akses, atau gateway secret tidak diizinkan |
+| 404 | `USER_NOT_FOUND` | Pengguna tidak ditemukan |
 
 ## Catatan keamanan
 
@@ -320,24 +349,27 @@ acak menggunakan Faker.
 - Simpan refresh token pada penyimpanan client yang terlindungi.
 - Rotasi `JWT_SECRET` dan `GATEWAY_SECRET` sesuai kebijakan deployment.
 - Seeder ditujukan untuk development/demo karena menghapus data lama.
-- Endpoint `/nilai` menerapkan kontrol akses berbasis role: admin/dosen dapat
-  melihat seluruh nilai, sedangkan mahasiswa hanya dapat melihat nilainya
-  sendiri.
+- Service hanya menerima request yang melalui gateway dengan gateway secret yang valid.
+- Service juga memverifikasi JWT token (access token atau service token) meskipun gateway secret valid.
+- Inter-service communication menggunakan token service yang berlaku 5 menit.
 - Pembaruan dan finalisasi nilai dibatasi untuk admin/dosen dan hanya
   diizinkan pada jam kerja 07:00 sampai sebelum 21:00.
 - Nilai yang sudah difinalisasi dikunci melalui `is_final = 1`.
 
 ## Status pengujian
 
-Belum ada test runner otomatis yang didefinisikan di `package.json`. Validasi
-manual minimum dapat dilakukan dengan:
+Belum ada test runner otomatis yang didefinisikan di `package.json`. Untuk
+panduan pengujian lengkap untuk demo video, lihat file `PANDUAN_PENGUJIAN.md`.
 
-1. menjalankan seeder;
-2. menjalankan `node app.js`;
-3. memanggil `GET /`;
-4. melakukan login;
-5. memakai access token pada `GET /nilai`;
-6. memakai refresh token pada `POST /auth/refresh`;
-7. menguji `PUT /nilai/:id` menggunakan akun admin/dosen pada jam kerja;
-8. menguji `POST /nilai/finalize/:id`, lalu memastikan nilai yang sudah
-   difinalisasi tidak dapat diperbarui lagi.
+Validasi manual minimum dapat dilakukan dengan:
+
+1. Menjalankan seeder
+2. Menjalankan ketiga aplikasi (gateway, service-nilai, service-transkrip)
+3. Memanggil `GET /` pada masing-masing service untuk health check
+4. Melakukan login melalui gateway
+5. Mengakses `GET /nilai` dengan access token
+6. Menggunakan refresh token pada `POST /auth/refresh`
+7. Menggunakan `POST /auth/logout` untuk mencabut refresh token
+8. Menguji `PUT /nilai/:id` menggunakan akun admin/dosen pada jam kerja
+9. Menguji `POST /kelas/:id/finalisasi`, lalu memverifikasi sinkronisasi ke transkrip
+10. Mengakses `GET /transkrip/:nim` untuk melihat transkrip
