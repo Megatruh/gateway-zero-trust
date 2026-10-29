@@ -81,6 +81,11 @@ if (!penggunaColumns.includes("nama")) {
   db.exec("ALTER TABLE para_pengguna ADD COLUMN nama TEXT NOT NULL DEFAULT ''");
 }
 
+// Migrasikan database lama yang belum memiliki kolom refresh_token
+if (!penggunaColumns.includes("refresh_token")) {
+  db.exec("ALTER TABLE para_pengguna ADD COLUMN refresh_token TEXT");
+}
+
 // Reset data lama
 db.exec(
   `DELETE FROM transkrip; DELETE FROM nilai; DELETE FROM kelas; DELETE FROM para_pengguna; DELETE FROM audit_logs;`,
