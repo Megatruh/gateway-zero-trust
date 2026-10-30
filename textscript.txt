@@ -1,0 +1,295 @@
+NASKAH VIDEO DEMO PROJECT GATEWAY ZERO TRUST
+
+Target durasi: 6–9 menit
+
+Catatan:
+- Jalankan perintah pada PANDUAN_PENGUJIAN.md sambil membacakan bagian yang sesuai.
+- Ganti semua placeholder <paste-access-token>, <paste-refresh-token>, dan
+  <paste-service-token> dengan token asli dari hasil pengujian.
+- Token boleh disingkat atau ditutupi pada tampilan video.
+
+
+PEMBUKAAN — sekitar 30 detik
+
+Assalamualaikum warahmatullahi wabarakatuh.
+
+Pada video ini saya akan mendemonstrasikan project Gateway Zero Trust untuk
+sistem akademik. Project ini terdiri dari API Gateway, Service Nilai, dan
+Service Transkrip. Setiap request tidak langsung dipercaya, tetapi harus
+melewati pemeriksaan device, token, role, dan gateway secret.
+Project ini saya buat untuk menunjukkan bagaimana konsep Zero Trust dapat
+diterapkan pada sistem akademik berbasis microservice.
+
+Tech stack yang saya gunakan adalah Node.js dan Express untuk membuat API
+Gateway dan 2 micro services.
+Saya menggunakan SQLite dengan better-sqlite3 yang makana akan meyimpan Data pengguna, nilai, transkrip, refresh token, dan auditlog.
+Untuk autentikasi, saya menggunakan JSON Web Token atau JWT. lalu Password pengguna diamankan menggunakan bcryptjs, sehingga password tidak disimpan dalam bentuk teks biasa.
+Komunikasi dari gateway ke microservice menggunakan http-proxy-middleware. yang mana Konfigurasi secret dan password disimpan melalui environment variable agar tidak ditulis langsung di source code.
+
+Saya akan langsung menunjukkan proses setup dan seluruh skenario pengujian
+yang tersedia pada panduan proyek.
+
+
+PERSIAPAN — sekitar 30 detik
+
+Pertama, saya memastikan file environment sudah berisi konfigurasi yang
+diperlukan. Kemudian saya menjalankan seeder dengan perintah:
+
+node scripts/seed.js
+
+Seeder ini menyiapkan database dan data demo pengguna.
+
+Selanjutnya saya menjalankan tiga aplikasi pada terminal terpisah:
+
+Terminal pertama:
+node app.js
+
+Terminal kedua:
+cd service-nilai
+node app.js
+
+Terminal ketiga:
+cd service-transkrip
+node app.js
+
+
+EKSPERIMEN 1: HEALTH CHECK — sekitar 20 detik
+
+Pertama saya melakukan health check pada ketiga komponen.
+
+Saya menjalankan:
+
+curl http://localhost:3000/
+curl http://localhost:3001/health
+curl http://localhost:3002/health
+
+Ketiganya memberikan status ONLINE. Ini menunjukkan bahwa gateway,
+Service Nilai, dan Service Transkrip sudah berjalan.
+
+
+EKSPERIMEN 2: LOGIN BERHASIL — sekitar 35 detik
+
+Sekarang saya mencoba login sebagai admin menggunakan username, password,
+dan device ID yang benar.
+
+Saya menjalankan request login sesuai panduan dengan device
+dev-admin-1.
+
+Hasilnya adalah status ALLOW. Response berisi data pengguna, access token,
+dan refresh token. Access token ini akan digunakan untuk mengakses endpoint
+yang dilindungi. Refresh token digunakan untuk meminta access token baru.
+
+Pada tahap ini sistem memeriksa kredensial dan kecocokan device pengguna.
+
+
+EKSPERIMEN 3: LOGIN DENGAN DEVICE SALAH — sekitar 25 detik
+
+Berikutnya saya menggunakan username dan password yang benar, tetapi
+menggunakan device ID device-salah.
+
+Hasilnya adalah status DENY dengan kode DEVICE_MISMATCH.
+
+Artinya, akun tidak boleh digunakan dari device yang tidak terdaftar.
+Ini merupakan salah satu penerapan prinsip Zero Trust: identitas saja
+belum cukup, perangkat yang digunakan juga harus diverifikasi.
+
+
+EKSPERIMEN 4: LOGIN DENGAN PASSWORD SALAH — sekitar 20 detik
+
+Sekarang saya menggunakan device yang benar, tetapi password yang salah.
+
+Hasilnya adalah status DENY dengan kode INVALID_CREDENTIALS.
+
+Jadi request ditolak karena kredensial tidak valid.
+
+
+EKSPERIMEN 5: REFRESH TOKEN — sekitar 25 detik
+
+Saya menggunakan refresh token dari login sebelumnya untuk meminta access
+token baru melalui endpoint /auth/refresh.
+
+Request juga menyertakan device ID yang sama dengan device pada token.
+
+Hasilnya adalah status ALLOW dan sistem mengembalikan access token baru.
+Ini menunjukkan bahwa refresh token hanya dapat digunakan dengan device
+yang sesuai.
+
+
+EKSPERIMEN 6: LOGOUT — sekitar 20 detik
+
+Selanjutnya saya mengirim refresh token ke endpoint /auth/logout.
+
+Jika proses berhasil, sistem memberikan status ALLOW dan refresh token
+tersebut dicabut. Dengan demikian token yang sudah logout tidak seharusnya
+digunakan kembali.
+
+
+EKSPERIMEN 7: MENDAPATKAN SERVICE TOKEN — sekitar 25 detik
+
+Sekarang saya menguji komunikasi internal antar-service.
+
+Saya mengirim client_id dan client_secret ke endpoint /auth/service.
+
+Hasilnya adalah status ALLOW dan sistem menerbitkan service token.
+Token ini digunakan oleh Service Nilai saat mengirim data ke Service
+Transkrip. Service token berbeda dari token pengguna biasa karena dipakai
+untuk komunikasi antar-service.
+
+
+EKSPERIMEN 8: AKSES LANGSUNG KE SERVICE — sekitar 25 detik
+
+Berikutnya saya mencoba mengakses Service Nilai secara langsung melalui
+port 3001 tanpa melewati gateway.
+
+Saya menjalankan:
+
+curl http://localhost:3001/nilai
+
+Hasilnya adalah status DENY dengan kode INVALID_GATEWAY_SECRET.
+
+Ini membuktikan bahwa service internal hanya menerima request yang membawa
+gateway secret yang benar. Client harus masuk melalui API Gateway.
+
+
+EKSPERIMEN 9: ADMIN MELIHAT NILAI — sekitar 25 detik
+
+Sekarang saya mengakses endpoint /nilai melalui gateway menggunakan access
+token admin dan device ID admin.
+
+Hasilnya adalah status ALLOW. Admin dapat melihat seluruh data nilai yang
+tersedia.
+
+Request ini melewati gateway, validasi device, validasi JWT, lalu diteruskan
+ke Service Nilai menggunakan proxy.
+
+
+EKSPERIMEN 10: LOGIN SEBAGAI MAHASISWA — sekitar 25 detik
+
+Selanjutnya saya login sebagai mahasiswa menggunakan username
+mhs_farhan-esha-putra_001, password mahasiswa123, dan device
+dev-mhs-farhan-123.
+
+Jika berhasil, sistem mengembalikan access token mahasiswa. Token ini akan
+saya gunakan pada pengujian berikutnya.
+
+
+EKSPERIMEN 11: MAHASISWA MELIHAT NILAI — sekitar 25 detik
+
+Saya menggunakan token mahasiswa untuk mengakses endpoint /nilai.
+
+Hasilnya adalah status ALLOW, tetapi data yang ditampilkan hanya nilai milik
+mahasiswa tersebut. Mahasiswa tidak mendapatkan seluruh data nilai.
+
+Ini menunjukkan penerapan Role-Based Access Control atau RBAC dan pembatasan
+akses berdasarkan identitas pemilik data.
+
+
+EKSPERIMEN 12: LOGIN SEBAGAI DOSEN — sekitar 25 detik
+
+Sekarang saya login sebagai dosen menggunakan username
+dsn_alam-rahmatulloh123, password dosen123, dan device
+dev-dsn-almrhmtl-001.
+
+Saya menyimpan access token dosen untuk pengujian berikutnya.
+
+
+EKSPERIMEN 13: DOSEN MELIHAT NILAI KELAS — sekitar 25 detik
+
+Dengan token dosen, saya mengakses endpoint /nilai.
+
+Hasilnya adalah status ALLOW. Dosen hanya dapat melihat nilai pada kelas
+yang diampunya, bukan seluruh nilai pada sistem.
+
+Pembatasan ini dilakukan berdasarkan role dosen dan nomor identitas dosen
+yang tersimpan pada token.
+
+
+EKSPERIMEN 14: DOSEN UPDATE NILAI — sekitar 30 detik
+
+Selanjutnya saya mencoba mengubah nilai dengan method PUT pada data nilai
+nomor 1. Saya mengirim nilaiAngka sebesar 85 menggunakan token dosen.
+
+Hasilnya adalah status ALLOW dan pesan bahwa nilai berhasil diperbarui.
+
+Endpoint ini memeriksa bahwa pengguna memiliki role dosen atau admin, dosen
+tersebut mengampu kelas terkait, input nilai tersedia, dan data belum final.
+
+
+EKSPERIMEN 15: DOSEN FINALISASI KELAS — sekitar 35 detik
+
+Berikutnya saya menjalankan endpoint finalisasi untuk kelas nomor 1.
+
+Hasilnya adalah status ALLOW dengan pesan bahwa kelas berhasil difinalisasi
+dan disinkronkan ke transkrip.
+
+Pada proses ini, nilai draft diubah menjadi final. Service Nilai meminta
+service token, lalu mengirim data nilai ke Service Transkrip melalui
+komunikasi internal.
+
+
+EKSPERIMEN 16: UPDATE NILAI YANG SUDAH FINAL — sekitar 25 detik
+
+Sekarang saya mencoba mengubah kembali nilai yang sudah difinalisasi,
+misalnya menjadi 90.
+
+Hasilnya adalah status DENY dengan kode UPDATE_FAILED.
+
+Artinya, sistem mencegah perubahan terhadap nilai yang sudah final.
+
+
+EKSPERIMEN 17: MELIHAT TRANSKRIP MAHASISWA — sekitar 30 detik
+
+Selanjutnya saya mengakses endpoint transkrip menggunakan NIM mahasiswa
+dan token mahasiswa.
+
+Hasilnya adalah status ALLOW dan data transkrip mahasiswa ditampilkan.
+Data ini berasal dari nilai yang sudah difinalisasi dan disinkronkan dari
+Service Nilai.
+
+Mahasiswa hanya dapat melihat transkrip miliknya sendiri.
+
+
+EKSPERIMEN 18: MEMERIKSA AUDIT LOG — sekitar 30 detik
+
+Sekarang saya memeriksa audit log menggunakan perintah:
+
+sqlite3 database.sqlite "SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 10;"
+
+Di sini terlihat riwayat request, subject, endpoint, device ID, hasil
+ALLOW atau DENY, alasan keputusan, dan timestamp.
+
+Contohnya adalah login berhasil, device mismatch, password salah, dan
+akses langsung ke service yang ditolak.
+
+Audit log membantu proses monitoring dan pemeriksaan keamanan.
+
+
+EKSPERIMEN 19: MEMERIKSA DATA TRANSKRIP — sekitar 20 detik
+
+Terakhir saya memeriksa isi tabel transkrip dengan perintah:
+
+sqlite3 database.sqlite "SELECT * FROM transkrip;"
+
+Data hasil finalisasi sudah tersimpan di tabel transkrip. Ini membuktikan
+bahwa proses sinkronisasi dari Service Nilai ke Service Transkrip berhasil.
+
+
+PENUTUP — sekitar 30 detik
+
+Dari seluruh pengujian ini dapat disimpulkan bahwa project menerapkan
+konsep Zero Trust dengan beberapa lapisan pemeriksaan.
+
+Pertama, pengguna harus login menggunakan kredensial yang benar.
+Kedua, device ID harus terdaftar dan sesuai dengan token.
+Ketiga, setiap endpoint terproteksi membutuhkan JWT yang valid.
+Keempat, akses dibatasi berdasarkan role dan kepemilikan data.
+Kelima, service internal hanya menerima request melalui gateway.
+Keenam, komunikasi antar-service menggunakan service token.
+Terakhir, seluruh aktivitas penting dicatat pada audit log.
+
+Jadi, prinsip utama project ini adalah never trust, always verify.
+
+Demikian demonstrasi project Gateway Zero Trust saya.
+Terima kasih.
+
+Wassalamualaikum warahmatullahi wabarakatuh.

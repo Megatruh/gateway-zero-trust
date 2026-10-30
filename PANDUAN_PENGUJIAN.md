@@ -36,10 +36,10 @@
 curl http://localhost:3000/
 
 # Service Nilai
-curl http://localhost:3001/
+curl http://localhost:3001/health
 
 # Service Transkrip
-curl http://localhost:3002/
+curl http://localhost:3002/health
 ```
 
 ### 2. Login (Berhasil)
@@ -101,7 +101,38 @@ curl -X POST http://localhost:3000/auth/service \
   -d '{"client_id":"nilai-service-id","client_secret":"nilai-service-secret-key-please-change"}'
 ```
 
-### 8. Akses Langsung ke Service (Tanpa Gateway - Harus Gagal)
+Simpan `token` sebagai `serviceToken`.
+
+### 8. Sinkronisasi dengan Token User (Harus Ditolak)
+
+Gunakan `accessToken` admin dari langkah login. Token user tidak boleh digunakan
+untuk sinkronisasi transkrip.
+
+```bash
+curl -X POST http://localhost:3000/transkrip/sinkron \
+  -H "Content-Type: application/json" \
+  -H "X-Device-ID: dev-admin-1" \
+  -H "Authorization: Bearer <accessToken-admin>" \
+  -d '{"kelas_id":1,"mahasiswa_nim":"247006001","nilai_angka":85}'
+```
+
+Harus mendapat respons `DENY` dengan kode `FORBIDDEN` dan alasan
+`Hanya token service yang diizinkan.`
+
+### 9. Sinkronisasi dengan Token Service (Harus Berhasil)
+
+Gunakan `serviceToken` dari langkah 7.
+
+```bash
+curl -X POST http://localhost:3000/transkrip/sinkron \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <serviceToken>" \
+  -d '{"kelas_id":1,"mahasiswa_nim":"247006001","nilai_angka":85}'
+```
+
+Harus mendapat respons `ALLOW` dengan pesan `Data berhasil disinkronkan ke transkrip.`
+
+### 10. Akses Langsung ke Service (Tanpa Gateway - Harus Gagal)
 
 ```bash
 curl http://localhost:3001/nilai
@@ -109,7 +140,7 @@ curl http://localhost:3001/nilai
 
 Harus mendapat respons `DENY` dengan kode `INVALID_GATEWAY_SECRET`.
 
-### 9. Akses Nilai via Gateway (Admin)
+### 11. Akses Nilai via Gateway (Admin)
 
 ```bash
 curl http://localhost:3000/nilai \
@@ -117,7 +148,7 @@ curl http://localhost:3000/nilai \
   -H "Authorization: Bearer <paste-access-token>"
 ```
 
-### 10. Login sebagai Mahasiswa
+### 12. Login sebagai Mahasiswa
 
 ```bash
 curl -X POST http://localhost:3000/auth/login \
@@ -128,7 +159,7 @@ curl -X POST http://localhost:3000/auth/login \
 
 Simpan `accessToken` mahasiswa.
 
-### 11. Mahasiswa Lihat Nilai (Hanya Miliknya)
+### 13. Mahasiswa Lihat Nilai (Hanya Miliknya)
 
 ```bash
 curl http://localhost:3000/nilai \
@@ -136,7 +167,7 @@ curl http://localhost:3000/nilai \
   -H "Authorization: Bearer <paste-mahasiswa-token>"
 ```
 
-### 12. Login sebagai Dosen
+### 14. Login sebagai Dosen
 
 ```bash
 curl -X POST http://localhost:3000/auth/login \
@@ -147,7 +178,7 @@ curl -X POST http://localhost:3000/auth/login \
 
 Simpan `accessToken` dosen.
 
-### 13. Dosen Lihat Nilai (Kelas yang Diampu)
+### 15. Dosen Lihat Nilai (Kelas yang Diampu)
 
 ```bash
 curl http://localhost:3000/nilai \
@@ -155,7 +186,7 @@ curl http://localhost:3000/nilai \
   -H "Authorization: Bearer <paste-dosen-token>"
 ```
 
-### 14. Dosen Update Nilai (Hanya pada Jam Kerja 07:00-21:00)
+### 16. Dosen Update Nilai (Hanya pada Jam Kerja 07:00-21:00)
 
 ```bash
 curl -X PUT http://localhost:3000/nilai/1 \
@@ -165,7 +196,7 @@ curl -X PUT http://localhost:3000/nilai/1 \
   -d '{"nilaiAngka":85}'
 ```
 
-### 15. Dosen Finalisasi Kelas
+### 17. Dosen Finalisasi Kelas
 
 ```bash
 curl -X POST http://localhost:3000/kelas/1/finalisasi \
@@ -173,7 +204,7 @@ curl -X POST http://localhost:3000/kelas/1/finalisasi \
   -H "Authorization: Bearer <paste-dosen-token>"
 ```
 
-### 16. Coba Update Nilai yang Sudah Final (Harus Gagal)
+### 18. Coba Update Nilai yang Sudah Final (Harus Gagal)
 
 ```bash
 curl -X PUT http://localhost:3000/nilai/{id_kelas} \
@@ -185,7 +216,7 @@ curl -X PUT http://localhost:3000/nilai/{id_kelas} \
 
 Harus mendapat respons `DENY` dengan kode `UPDATE_FAILED`.
 
-### 17. Lihat Transkrip Mahasiswa
+### 19. Lihat Transkrip Mahasiswa
 
 ```bash
 curl http://localhost:3000/transkrip/247006001 \
@@ -193,13 +224,13 @@ curl http://localhost:3000/transkrip/247006001 \
   -H "Authorization: Bearer <paste-mahasiswa-token>"
 ```
 
-### 18. Cek Audit Log
+### 20. Cek Audit Log
 
 ```bash
 sqlite3 database.sqlite "SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 10;"
 ```
 
-### 19. Cek Data Transkrip (Setelah Finalisasi)
+### 21. Cek Data Transkrip (Setelah Finalisasi)
 
 ```bash
 sqlite3 database.sqlite "SELECT * FROM transkrip;"
